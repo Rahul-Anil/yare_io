@@ -29,7 +29,7 @@ function energy_bridge_positions(coor1, coor2, harvest_units_req) {
     return bridge_positions;
 }
 
-function bridge_harvest_move(base, star, bridge_spirits) {
+function bridge_move(base, star, bridge_spirits) {
     let harvest_units_req = bridge_spirits.length;
     bridge_positions = energy_bridge_positions(
         base.position,
@@ -105,7 +105,7 @@ if (tick < 100) {
         my_alive_spirits[i].mark = "harvest";
         bridge_spirits.push(my_alive_spirits[i]);
     }
-    bridge_harvest_move(my_base, my_star, bridge_spirits);
+    bridge_move(my_base, my_star, bridge_spirits);
     bridges.push(bridge_spirits);
 } else {
     console.log("else loop");
