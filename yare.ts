@@ -1,3 +1,5 @@
+import { NumberLiteralType } from "typescript";
+
 type pos = {
     x: number;
     y: number;
@@ -11,12 +13,17 @@ enum SpiritJob {
     NoJob, // When a new spirit is spawned, it will have no job
 }
 
+enum HarvestingMethod {
+    bridge,
+    inefficient,
+}
+
 type SpiritInfo = {
     belongs_to_base?: Base;
     is_moving: boolean;
     job?: SpiritJob;
     moveTo?: pos;
-    energizeSource?: Base | Spirit | Star | undefined;
+    energizeSource?: Base | Spirit | Star;
     energizeTarget?: Base | Spirit | Star;
 };
 
@@ -57,7 +64,7 @@ function sq_dist(coord1, coord2) {
 function printMap<K, V>(map: Map<K, V>): void {
     console.log("Map contents:");
     map.forEach((value, key) => {
-        console.log(`${key.toString()} => ${value.toString()}`);
+        console.log(`${key.toString()} => ${value.id.toString()}`);
     });
 }
 
@@ -117,7 +124,10 @@ function get_set_marks_for_spirits(
 ) {
     for (let alive_spirit of my_alive_spirits) {
         // get the mark of the spirit from memory if it exists
-        if (memory.spirit_info.size > 0) {
+        if (
+            memory.spirit_info.size > 0 &&
+            memory.spirit_info.get(alive_spirit.id)
+        ) {
             let spirit_info: SpiritInfo = memory.spirit_info.get(
                 alive_spirit.id
             );
@@ -142,11 +152,8 @@ function get_set_marks_for_spirits(
 }
 
 // BRIDGE
-function bridge_move(base, star, harvest_spirits) {
-    let bridge_positions: pos[] = energy_bridge_positions(base);
-    console.log("bridge_positions: ", bridge_positions);
-}
 
+// Function to find the positions of the bridge
 function bridge_pos(coor1, coor2, no_of_spirits): pos[] {
     let bridge_positions: pos[] = [];
     let m1: number = 1;
@@ -161,12 +168,115 @@ function bridge_pos(coor1, coor2, no_of_spirits): pos[] {
     return bridge_positions;
 }
 
+function inefficient_harvesting(spirits: Spirit[], base: Base, star: Star) {
+    for (let spirit of spirits) {
+        spirit.mark.job = SpiritJob.harvest;
+        if (spirit.energy == spirit.energy_capacity) {
+            spirit.mark.energizeTarget = base;
+        }
+
+        if (spirit.energy == 0) {
+            spirit.mark.energizeTarget = spirit;
+        }
+
+        if (spirit.mark.energizeTarget == base) {
+            spirit.move(base.position);
+            spirit.energize(spirit.mark.energizeTarget);
+        }
+
+        if (spirit.mark.energizeTarget == spirit) {
+            spirit.move(star.position);
+            spirit.energize(spirit);
+        }
+    }
+}
+
+function harvester_spirits(spirits_assigned_to_base: Spirit[]) {
+    let harvest_spirits = spirits_assigned_to_base.filter(
+        (spirit) => spirit.mark.job == SpiritJob.harvest
+    );
+    for (let harvest_spirit of harvest_spirits) {
+        // Move to target position if spirit is not already theres
+        if (
+            harvest_spirit.position[0] != harvest_spirit.mark.target.x &&
+            harvest_spirit.position[1] != harvest_spirit.mark.target.y
+        ) {
+            harvest_spirit.move([
+                harvest_spirit.mark.target.x,
+                harvest_spirit.mark.target.y,
+            ]);
+        } else {
+            // Spirit is already at target position
+            // start harvesting loop
+            if (harvest_spirit.energy < harvest_spirit.energy_capacity * 0.2) {
+                if (harvest_spirit.mark.energizeSource !== undefined) {
+                    harvest_spirit.energize(harvest_spirit.mark.energizeSource);
+                }
+            } else {
+                harvest_spirit.energize(harvest_spirit.mark.energizeTarget);
+            }
+        }
+    }
+}
+
+function get_star_list_in_terms_of_pref(
+    dist_base_from_star: Map<Star, number>
+) {
+    let star_list_in_terms_of_pref = new Map();
+    let dist_list = new Array();
+    let curr_energy = new Array();
+    let energy_capacity = new Array();
+    let energy_regen = new Array();
+    for (let [key, value] of dist_base_from_star) {
+        dist_list.push(value);
+        curr_energy.push(key.energy);
+        energy_capacity.push(key.energy_capacity);
+        energy_regen.push(key.regeneration);
+    }
+
+    for (let [key, value] of dist_base_from_star) {
+        // Positive factors
+        let curr_energy_std =
+            key.energy /
+            curr_energy.reduce((acc: number, inp: number) => acc + inp);
+        let energy_capacity_std =
+            key.energy_capacity /
+            energy_capacity.reduce((acc: number, inp: number) => acc + inp);
+        let energy_regen_std =
+            key.regeneration /
+            energy_regen.reduce((acc: number, inp: number) => acc + inp);
+
+        // Negative factors
+        let dist_std =
+            value / dist_list.reduce((acc: number, inp: number) => acc + inp);
+
+        let preference_value =
+            curr_energy_std + energy_capacity_std + energy_regen_std - dist_std;
+
+        star_list_in_terms_of_pref.set(key, preference_value);
+    }
+
+    // ssort
+    star_list_in_terms_of_pref_sort = new Map(
+        [...star_list_in_terms_of_pref].sort((a, b) => b[1] - a[1])
+    );
+    // give value
+    let star_in_terms_of_perf = new Map();
+    let i = 0;
+    for (let [key, val] of star_list_in_terms_of_pref_sort) {
+        star_in_terms_of_perf.set(i, key);
+        i++;
+    }
+    printMap(star_in_terms_of_perf);
+    return star_in_terms_of_perf;
+}
+
 // function main
 function main() {
     // Get the info of all bases
     let [my_base_list, enemy_base_list, neutral_base_list] = all_base_info();
     // Set energize max dist
-    let energize_max_dist = 80;
+    let energize_max_dist = 20;
 
     if (tick == 1) {
         // These variables will need to be stored in memory
@@ -186,7 +296,7 @@ function main() {
     get_set_marks_for_spirits(my_alive_spirits, my_base_list);
 
     for (let base of my_base_list) {
-        console.log("base id: ", base.id);
+        let harvesting_method: HarvestingMethod = HarvestingMethod.bridge;
 
         // List of all friendly spirit near base
         let friends_near_base = base.sight.friends;
@@ -202,21 +312,11 @@ function main() {
 
         // dist of stars from the base
         let dist_stars_from_base = memory.all_star_base_dict.get(base.id);
-        let dist_stars_form_base_sorted = new Map(
-            [...dist_stars_from_base].sort((a, b) => a[1] - b[1])
-        );
 
-        let stars_in_terms_of_dist = new Map();
-        // get the stars in terms of dist
-        let i = 0;
-        for (let [key, value] of dist_stars_form_base_sorted) {
-            stars_in_terms_of_dist.set(i, key);
-            i++;
-        }
-        console.log("dist_stars_form_base_sorted");
-        printMap(dist_stars_form_base_sorted);
+        let stars_ordering_by_pref =
+            get_star_list_in_terms_of_pref(dist_stars_from_base);
 
-        // NEED TO CHANGE THE LOGIC ON HOW HARVESTERS ARE ASSIGNED
+        // BASE HARVESTING UNIT
 
         // if base energy is less than 50% then find the closest star and assign the
         // number of spirits required to harvest the star
@@ -226,7 +326,7 @@ function main() {
         // are assigned to the base have the last energized obj is the base
         if (base.energy < base.energy_capacity * 0.5) {
             // find the closest star to the base from all_star_base_dict
-            let closest_star: Star = stars_in_terms_of_dist.get(0);
+            let closest_star: Star = stars_ordering_by_pref.get(0);
             console.log("closest_star :" + closest_star.id);
             let dist_to_closest_star = sq_dist(
                 closest_star.position,
@@ -238,40 +338,61 @@ function main() {
             );
             console.log("No of harvesters req: " + no_of_harvesters_req);
 
-            let bridge_positions: pos[] = bridge_pos(
-                base.position,
-                closest_star.position,
-                no_of_harvesters_req
-            );
-            console.log("bridge_positions length " + bridge_positions.length);
-            console.log(
-                "bridge_positions " +
-                    "x" +
-                    bridge_positions[0].x +
-                    "y" +
-                    bridge_positions[0].y
-            );
-
-            // Assign the spirits to be harvesters
-            for (let i = 0; i < no_of_harvesters_req; i++) {
-                console.log(
-                    "assigned spirit to be harvester " +
-                        spirits_assigned_to_base[i].id
+            // check if we have the no of spirts required to harvest the star
+            if (spirits_assigned_to_base.length < no_of_harvesters_req) {
+                // if we dont have the no of spirits required then we use inefficient
+                // harvesting method
+                console.log("inefficient harvesting mode");
+                harvesting_method = HarvestingMethod.inefficient;
+                inefficient_harvesting(
+                    spirits_assigned_to_base,
+                    base,
+                    closest_star
                 );
-                spirits_assigned_to_base[i].mark.job = SpiritJob.harvest;
-                spirits_assigned_to_base[i].mark.target = bridge_positions[i];
-                // Assigning energy target and SOURCE
-                // Assign target
-                if (i -1 < 0){
-                    spirits_assigned_to_base[i].mark.energizeTarget = base;
-                } else {
-                    spirits_assigned_to_base[i].mark.energizeTarget = spirits_assigned_to_base[i-1];
-                }
-                // Assign source 
-                if (i+1 > no_of_harvesters_req){
-                    spirits_assigned_to_base[i].mark.energizeSource = spirits_assigned_to_base;
-                } else {
-                    spirits_assigned_to_base.mark.energizeSource = undefined;
+            } else {
+                // Efficient harvesting method
+                console.log("Efficient harvesting mode");
+                let bridge_positions: pos[] = bridge_pos(
+                    base.position,
+                    closest_star.position,
+                    no_of_harvesters_req
+                );
+                console.log(
+                    "bridge_positions length " + bridge_positions.length
+                );
+                console.log(
+                    "bridge_positions " +
+                        "x" +
+                        bridge_positions[0].x +
+                        "y" +
+                        bridge_positions[0].y
+                );
+
+                // Assign the spirits to be harvesters
+                for (let i = 0; i < no_of_harvesters_req; i++) {
+                    console.log(
+                        "assigned spirit to be harvester " +
+                            spirits_assigned_to_base[i].id
+                    );
+                    spirits_assigned_to_base[i].mark.job = SpiritJob.harvest;
+                    spirits_assigned_to_base[i].mark.target =
+                        bridge_positions[i];
+                    // Assigning energy target and SOURCE
+                    // Assign target
+                    if (i - 1 < 0) {
+                        spirits_assigned_to_base[i].mark.energizeTarget = base;
+                    } else {
+                        spirits_assigned_to_base[i].mark.energizeTarget =
+                            spirits_assigned_to_base[i - 1];
+                    }
+                    // Assign source
+                    if (i + 2 > no_of_harvesters_req) {
+                        spirits_assigned_to_base[i].mark.energizeSource =
+                            spirits_assigned_to_base[i];
+                    } else {
+                        spirits_assigned_to_base[i].mark.energizeSource =
+                            undefined;
+                    }
                 }
             }
         }
@@ -279,40 +400,8 @@ function main() {
         // I can add more logic into how the spirits can be assigned different jobs
 
         // Harvesters
-        let harvest_spirits = spirits_assigned_to_base.filter(
-            (spirit) => spirit.mark.job == SpiritJob.harvest
-        );
-
-        for (let harvest_spirit of harvest_spirits) {
-            console.log("harvest_spirit_id " + harvest_spirit.id);
-            // Move to target position if spirit is not already theres
-            if (
-                harvest_spirit.position[0] != harvest_spirit.mark.target.x &&
-                harvest_spirit.position[1] != harvest_spirit.mark.target.y
-            ) {
-                harvest_spirit.move([
-                    harvest_spirit.mark.target.x,
-                    harvest_spirit.mark.target.y,
-                ]);
-            } else {
-                // Spirit is already at target position
-                // start harvesting loop
-                if (
-                    harvest_spirit.energy <
-                    harvest_spirit.energy_capacity * 0.2
-                ) {
-                    console.log("ENERGY LOW")
-                    if (harvest_spirit.mark.energizeSource !== undefined) {
-                        console.log("ENERGIZE SOURCE: " + harvest_spirit.mark.energizeSource.id)
-                        harvest_spirit.energize(
-                            harvest_spirit.mark.energizeSource
-                        );
-                    }
-                } else {
-                    console.log("ENERGIZE TARGET "+harvest_spirit.mark.energizeTarget.id);
-                    harvest_spirit.energize(harvest_spirit.mark.energizeTarget);
-                }
-            }
+        if (harvesting_method == HarvestingMethod.bridge) {
+            harvester_spirits(spirits_assigned_to_base);
         }
     }
 
