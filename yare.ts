@@ -1,5 +1,3 @@
-import { NumberLiteralType } from "typescript";
-
 type pos = {
     x: number;
     y: number;
@@ -18,7 +16,7 @@ enum HarvestingMethod {
     inefficient,
 }
 
-type SpiritInfo = {
+type OldSpiritInfo = {
     belongs_to_base?: Base;
     is_moving: boolean;
     job?: SpiritJob;
@@ -28,7 +26,7 @@ type SpiritInfo = {
 };
 
 // Get the info of which base is mine, which is enemy's, and which is neutral
-function all_base_info(): [Base[], Base[], Base[]] {
+function get_all_base_info(): [Base[], Base[], Base[]] {
     let my_base_list = new Array();
     let enemy_base_list = new Array();
     let neutral_base_list = new Array();
@@ -274,7 +272,8 @@ function get_star_list_in_terms_of_pref(
 // function main
 function main() {
     // Get the info of all bases
-    let [my_base_list, enemy_base_list, neutral_base_list] = all_base_info();
+    let [my_base_list, enemy_base_list, neutral_base_list] =
+        get_all_base_info();
     // Set energize max dist
     let energize_max_dist = 20;
 
