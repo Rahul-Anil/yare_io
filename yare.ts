@@ -1,5 +1,3 @@
-import { unzipSync } from "zlib";
-
 {
     type Pos = {
         x: number;
@@ -198,6 +196,17 @@ import { unzipSync } from "zlib";
         harvestBase?: Base;
     };
 
+    enum AttackSquadRole {
+        LEADER,
+        CHARGER,
+    }
+
+    type AttackJobInfo = {
+        attackSquadID?: number;
+        attackTarget?: Base | Spirit;
+        attackSquadRole?: AttackSquadRole;
+    };
+
     type SpiritInfo = {
         name?: string;
         belongsToBase?: Base;
@@ -205,10 +214,11 @@ import { unzipSync } from "zlib";
         moveTo?: Pos;
         energizeSource?: Base | Spirit | Star;
         energizeTarget?: Base | Spirit | Star;
-        JobInfo?: HarvestJobInfo;
+        JobInfo?: HarvestJobInfo | AttackJobInfo;
     };
 
     class spiritEntities {
+        spiritType: string;
         aliveSpirits: Spirit[];
         positionOfSpiritWithFixedLocation?: Map<Pos, Spirit>;
         baseInfo: baseEntities;
@@ -223,6 +233,7 @@ import { unzipSync } from "zlib";
             this.helperFunc = new helperFunctions();
             this.baseInfo = new baseEntities();
             this.positionOfSpiritWithFixedLocation = new Map();
+            this.spiritType = my_spirits[0].shape;
         }
 
         /*
@@ -288,6 +299,7 @@ import { unzipSync } from "zlib";
 
     class harvestSpirits extends spiritEntities {
         harvestID: number;
+        chargingRate: number;
 
         constructor() {
             super();
@@ -295,6 +307,14 @@ import { unzipSync } from "zlib";
                 this.harvestID = 0;
             } else {
                 this.harvestID = memory.harvestIDHighest;
+            }
+
+            if (this.spiritType == "squares") {
+                this.chargingRate = 0.2;
+            } else if (this.spiritType == "circles") {
+                this.chargingRate = 0.1;
+            } else {
+                this.chargingRate = 0.2;
             }
         }
 
@@ -379,9 +399,6 @@ import { unzipSync } from "zlib";
             baseToSupply: Base,
             starToHarvest: Star
         ) {
-            // <TEMP></TEMP>
-            console.log("no of spirits to assigned: " + spirits.length);
-
             if (harvestingMethod == HarvestingMethod.DIRECT) {
                 this.assignDirectHarvestingDetailsToSpirits(
                     spirits,
@@ -490,15 +507,6 @@ import { unzipSync } from "zlib";
                         m2 * baseToSupply.position[1]) /
                         (m1 + m2)
                 );
-                // // Need to check here if the position has been used by another spirits
-                // if (
-                //     this.positionOfSpiritWithFixedLocation?.has({ x: x, y: y })
-                // ) {
-                //     // if the position has already been occupied by another spirit then
-                //     // shift the position by 5 in the x and y axis
-                //     x += 15;
-                //     y += 15;
-                // }
                 spiritPositionOnBridge.push({
                     x: x,
                     y: y,
@@ -545,7 +553,10 @@ import { unzipSync } from "zlib";
                     spirit.move([spirit.mark.moveTo.x, spirit.mark.moveTo.y]);
                 } else {
                     // Spirit is at the target position then start harvesting loop
-                    if (spirit.energy < spirit.energy_capacity * 0.2) {
+                    if (
+                        spirit.energy <
+                        spirit.energy_capacity * this.chargingRate
+                    ) {
                         if (spirit.mark.energizeSource !== undefined) {
                             spirit.energize(spirit.mark.energizeSource);
                         }
@@ -636,7 +647,25 @@ import { unzipSync } from "zlib";
         }
     }
 
-    class attackSpirits extends spiritEntities {}
+    class attackSpirits extends spiritEntities {
+        attckSpiritConvertionNum: number;
+        attackSquadID: number;
+        noOfUnitsPerSquad: number;
+
+        constructor() {
+            super();
+            // Initialize the attackSquadID
+            this.attackSquadID = 0;
+            // Initialize the noOfUnitsPerSquad (I think i will make this a more dynamic variable)
+            if (this.spiritType == "squares") {
+                this.noOfUnitsPerSquad = 3;
+            } else if (this.spiritType == "circles") {
+                this.noOfUnitsPerSquad = 20;
+            }
+        }
+
+        private assignAttackJobToSpirits() {}
+    }
 
     // CONSTANT VARIABLES
     const maxEnergizeDist = 200; // The maximum distance that a spirit can energize
@@ -764,8 +793,6 @@ import { unzipSync } from "zlib";
             // all spirits that are assigned as harvesters will perform harvesting at this point
             harvestSpiritObj.performHarvesting(spiritsAssignedToBase);
 
-            // Update memory
-            // Save the baseInfo to memory
             memory.baseInfo.set(base.id, baseInfo);
         }
 
