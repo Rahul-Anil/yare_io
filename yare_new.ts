@@ -4,148 +4,292 @@
         y: number;
     };
 
-    class helperFunctions {
+    /**
+     * Returns the distance between two points.
+     *
+     * @param coordA - the fist point in the form [x, y]
+     * @param coordB - the second point in the form [x, y]
+     * @returns the distance between the 2 points
+     */
+    function sqDist(coordA: number[], coordB: number[]): number {
+        return Math.pow(
+            Math.pow(coordA[0] - coordB[0], 2) +
+                Math.pow(coordA[1] - coordB[1], 2),
+            0.5
+        );
+    }
+
+    /**
+     * Prints Maps
+     *
+     * @param map - the map to print
+     * @param mapName - the name of the map to print
+     * @returns void
+     */
+    function printMap(map: Map<K, V>, mapName: string): void {
+        console.log("Printing map: ", mapName);
+        map.forEach((value, key) => {
+            console.log(`${key.toString()} => ${value.id.toString()}`);
+        });
+    }
+
+    /**
+     * Normalize a value to b/w 0 and 1 given a range of values
+     *
+     * @param x Value that has to be normalized
+     * @param min Min value of the range
+     * @param max Max value of the range
+     * @returns Normalized value
+     */
+    function normalizeValue(x: number, min: number, max: number): number {
+        return (x - min) / (max - min);
+    }
+
+    /**
+     * Sort map by value in descending order
+     *
+     * @param map Map that has to be sorted with key being any type and value being a
+     * number
+     * @returns Sorted map by value in descending order
+     */
+    function sortMapByValue(map: Map<K, number>): Map<K, number> {
+        return new Map([...map.entries()].sort((a, b) => a[1] - b[1]));
+    }
+
+    /**
+     * Function that is called to run jobs on the first tick
+     *
+     * @remarks This function is called only on the first tick
+     *
+     * @param tick the current tick
+     * @param starObj an obj of the star class
+     * @returns void
+     */
+    function initialTickJobs(starObj: sta, gameStateObj: gameState): void {
+        // If memory game state is not initialized, then initialize it
+        console.log("HERE");
+        memory.gameState = gameStateObj.initializeGameState(starObj);
+    }
+
+    interface gameStateMemory {
+        allStarDistFromAllBase: Map<Base, Map<Star, number>>;
+    }
+
+    class gameState {
+        allStarDistFromAllBase: Map<Base, Map<Star, number>>;
+
         /**
-         * Returns the distance between two points.
+         * Initialize the game state
          *
-         * @param coordA - the fist point in the form [x, y]
-         * @param coordB - the second point in the form [x, y]
-         * @returns the distance between the 2 points
+         * @param starObj Object of the star class
+         * @returns A fresh game state
          */
-        sqDist(coordA: number[], coordB: number[]): number {
-            return Math.pow(
-                Math.pow(coordA[0] - coordB[0], 2) +
-                    Math.pow(coordA[1] - coordB[1], 2),
-                0.5
-            );
+        initializeGameState(starObj: star): gameStateMemory {
+            // Initalize the allStarDistFromAllBase map
+            this.allStarDistFromAllBase = starObj.getAllStarDistFromAllBases();
+            let initGameState: gameStateMemory = {
+                allStarDistFromAllBase: this.allStarDistFromAllBase,
+            };
+            return initGameState;
         }
 
         /**
-         * Prints Maps
+         * Load the game state from memory
          *
-         * @param map - the map to print
-         * @param mapName - the name of the map to print
+         * @param gameStateMemory the game state that is stored in memory
          * @returns void
          */
-        printMap(map: Map<K, V>, mapName: string): void {
-            console.log("Printing map: ", mapName);
-            map.forEach((value, key) => {
-                console.log(`${key.toString()} => ${value.id.toString()}`);
-            });
-        }
-
-        /**
-         * Calculates the distance between all bases and all stars and stores it in
-         * a map in memory.
-         *
-         * @remark This function is called in tick 0 and then never again.
-         *
-         * @param baseList - the list of all bases
-         * @param starList - the list of all stars
-         * @returns void
-         */
-        setBaseStarDistMap(baseList: Base[], starList: Star[]): void {
-            let baseStarDistMap: Map<Base, Map<Star, number>> = new Map();
-            for (let base of baseList) {
-                let starMap = new Map();
-                for (let star of starList) {
-                    let dist: number = this.sqDist(
-                        base.position,
-                        star.position
-                    );
-                    starMap.set(star, dist);
-                }
-                baseStarDistMap.set(base, starMap);
+        loadGameStateFromMemory(gameStateMemory: gameStateMemory): void {
+            if (!gameStateMemory) {
+                console.log("ERROR: could not load game state from memory");
+                return undefined;
             }
-            memory.baseStarDistMap = baseStarDistMap;
-        }
-    }
-
-    type baseInfo = {
-        name: string;
-        noOfBridgeHarvesters: number;
-    };
-
-    class baseEntities {
-        allBaseList: Base[] = [base_zxq, base_a2c, base_p89, base_nua];
-        myBaseList: Base[] = [];
-        enemyBaseList: Base[] = [];
-        neutralBaseList: Base[] = [];
-
-        /**
-         * Constructor will update call the updateBaseOwnership function
-         */
-        constructor() {
-            this.updateBaseOwnership();
+            this.allStarDistFromAllBase =
+                gameStateMemory.allStarDistFromAllBase;
         }
 
         /**
-         * Get the ownership status of all the bases in the game and update the base
-         * class lists
+         * Save the game state to memory
          *
-         * @reuturn void
+         * @returns void
          */
-        updateBaseOwnership(): void {
-            this.allBaseList.forEach((base) => {
+        saveGameStateToMemory(): void {
+            let currGameState: gameStateMemory = {
+                allStarDistFromAllBase: this.allStarDistFromAllBase,
+            };
+            memory.gameState = currGameState;
+        }
+    }
+
+    class base {
+        baseList: Base[] = [base_zxq, base_a2c, base_p89, base_nua];
+
+        /**
+         * Get the ownership status of all the bases on the map
+         *
+         * @remarks This function is called every tick
+         *
+         * @returns map of bases and which player owns them
+         */
+        private getBaseOwnership(): Map<String, Base[]> {
+            let baseOwnership: Map<String, Base[]> = new Map();
+
+            let myBases: Base[] = [];
+            let enemyBases: Base[] = [];
+            let neutralBases: Base[] = [];
+
+            for (let base of this.baseList) {
                 if (base.control == this_player_id) {
-                    this.myBaseList.push(base);
+                    myBases.push(base);
                 } else if (base.control == "") {
-                    this.neutralBaseList.push(base);
+                    neutralBases.push(base);
                 } else {
-                    this.enemyBaseList.push(base);
+                    enemyBases.push(base);
                 }
-            });
+            }
+
+            baseOwnership.set("myBases", myBases);
+            baseOwnership.set("neutralBases", neutralBases);
+            baseOwnership.set("enemyBases", enemyBases);
+
+            return baseOwnership;
         }
     }
 
-    class starEntities {
-        allStarList: Star[] = [star_zxq, star_a2c, star_p89, star_nua]; 
-
-        // Star energy preference calculation weights
-        energyWeight: number:
-        energyCapacityWeight: number;
-        energyRegenWeight: number;
-        distWeight: number;
-
-        // Helper function class keyboard
-        helperFunc: helperFunctions;
+    class star {
+        starList: Star[] = [star_zxq, star_a2c, star_p89, star_nua];
 
         /**
-         * Constructor will initialize the helper function obj and sets the weights 
-         * on how star energy is decided
-         * 
-         * @param energyWeight - the weight pref given to the energy of the star
-         * @param energyCapacityWeight - the weight pref given to the energy capacity of the star
-         * @param energyRegenWeight - the weight pref given to the energy regen of the star
-         * @param distWeight - the weight pref given to the distance from the star
+         * Get max and min dist of all stars from the base. This is used to normalize
+         * the dist of all stars from the base
+         *
+         * @param distOfStarsFromBase Dist of all stars from the base
+         * @returns Obj with min and max dist from base
          */
-        constructor(energyWeight: number = 1, energyCapacityWeight: number = 1, energyRegenWeight: number = 1, distWeight: number = 1) {
-            this.energyWeight = energyWeight;
-            this.energyCapacityWeight = energyCapacityWeight;
-            this.energyRegenWeight = energyRegenWeight;
-            this.distWeight = distWeight;
-            this.helperFunc = new helperFunctions();
+        private getMaxAndMinDistFromBase(
+            distOfStarsFromBase: Map<Star, number>
+        ): { min: number; max: number } {
+            let minDist = Math.min(...distOfStarsFromBase.values());
+            let maxDist = Math.min(...distOfStarsFromBase.values());
+            return { min: minDist, max: maxDist };
         }
 
         /**
-         * Calculates the sum of all the properties of the star to Normalize values
-         *  
-         * @param baseStarDistMap - the map of dist of all stars from the base
-         * @return an array of all the sum of the properties of the star
+         * Get max and min energy of all stars from the base. This is used to normalize
+         * the dist of all stars from the base
+         *
+         * @returns Obj with min and max energy of all stars
          */
-        private calculateSumOfStarProperties(baseStarDistMap: Map<Star, number>): number[] {}
-
-        getStarsInTermsOfPerf(baseStarDistMap: Map<Star, number>): Map<number, Star>{
-            let starPrefOrderingMap: Map<number, Star> = new Map();
-            
-            // Calculate the sum of all the properties of the star to Normalize the values
-            let [
-                distListSum,
-                currEnergyListSum,
-                energyCapacityListSum,
-                energyListRegenSum
-            ] = this.calculateSumOfStarProperties(baseStarDistMap);
+        private getMaxAndMinEnergyOfStars() {
+            let minEnergy = Math.min(
+                ...this.starList.map((star) => star.energy)
+            );
+            let maxEnergy = Math.max(
+                ...this.starList.map((star) => star.energy)
+            );
+            return { min: minEnergy, max: maxEnergy };
         }
-        
+
+        /**
+         * Get max and min energy regen of all stars from the base. This is used to
+         * normalize the dist of all stars from the base
+         *
+         * @returns Obj with min and max energy regen of all stars
+         */
+        private getMinAndMaxEnergyRegenOfStars() {
+            let minEnergyRegen = Math.min(
+                ...this.starList.map((star) => star.regeneration)
+            );
+            let maxEnergyRegen = Math.max(
+                ...this.starList.map((star) => star.regeneration)
+            );
+            return { min: minEnergyRegen, max: maxEnergyRegen };
+        }
+
+        getPreferenceValueOfStars(
+            distOfStarsFromBase: Map<Star, number>,
+            energyWeight: number,
+            energyCapacityWeight: number,
+            energyRegenWeight: number,
+            distWeight: number
+        ): Map<Star, number> {
+            let preferenceValueOfStars: Map<Star, number> = new Map();
+
+            // Get min and max value of all parameters
+            let { min: minDist, max: maxDist } =
+                this.getMaxAndMinDistFromBase(distOfStarsFromBase);
+            let { min: minEnergy, max: maxEnergy } =
+                this.getMaxAndMinEnergyOfStars();
+            let { min: minEnergyRegen, max: maxEnergyRegen } =
+                this.getMinAndMaxEnergyRegenOfStars();
+            let [minEnergyCapacity, maxEnergyCapacity] = [1000, 3000];
+
+            for (let [star, dist] of distOfStarsFromBase) {
+                let preferenceValue = normalizeValue(
+                    star.energy,
+                    minEnergy,
+                    maxEnergy
+                );
+                +normalizeValue(
+                    star.regeneration,
+                    minEnergyRegen,
+                    maxEnergyRegen
+                ) +
+                    normalizeValue(
+                        star.energyCapacity,
+                        minEnergyCapacity,
+                        maxEnergyCapacity
+                    ) -
+                    normalizeValue(dist, minDist, maxDist);
+                preferenceValueOfStars.set(star, preferenceValue);
+            }
+            return preferenceValueOfStars;
+        }
+
+        /**
+         * Find distances b/w all bases and all the stars
+         *
+         * @remarks This function is called only on the first tick
+         *
+         * @returns a map of all the bases and their distances to all the stars on the map
+         */
+        getAllStarDistFromAllBases(): Map<Base, Map<Star, number>> {
+            let baseList: Base[] = [base_zxq, base_a2c, base_p89, base_nua];
+            let distMap: Map<Base, Map<Star, number>> = new Map();
+            for (let base of baseList) {
+                let distStarFromBaseMap: Map<Star, number> = new Map();
+                for (let star of this.starList) {
+                    distStarFromBaseMap.set(
+                        star,
+                        sqDist(base.position, star.position)
+                    );
+                }
+                distMap.set(base, distStarFromBaseMap);
+            }
+            return distMap;
+        }
     }
+
+    class spirit {}
+
+    function main() {
+        console.log("Current Tick: ", tick);
+
+        let gameStateObj: gameState = new gameState();
+
+        let baseObj: base = new base();
+        let starObj: star = new star();
+
+        // Calculations that must be made every tick
+        let baseOwnership: Map<String, Base[]> = baseObj.getBaseOwnership();
+
+        if (tick == 1) {
+            initialTickJobs(starObj, gameStateObj);
+        } else {
+            // Load the game state from memory
+            gameStateObj.loadGameStateFromMemory(memory.gameState);
+        }
+    }
+
+    main();
 }
